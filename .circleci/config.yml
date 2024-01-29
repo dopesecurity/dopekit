@@ -1,0 +1,23 @@
+version: 2.1
+orbs:
+  path-filtering: circleci/path-filtering@1.0.0
+  continuation: circleci/continuation@1.0.0
+
+setup: true
+
+docker:
+  - image: cimg/python:<<parameters.tag>>
+
+workflows:
+  select-workflow:
+    jobs:
+      - path-filtering/filter:
+          filters:
+            tags:
+              only: /PROD_.*/
+          # Compare files on main
+          base-revision: main
+          mapping: |
+            .circleci/Dockerfile rebuild_pipeline_image true
+            VERSION deploy_service true
+          config-path: ".circleci/dynamic_config.yml"

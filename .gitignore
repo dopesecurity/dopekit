@@ -1,0 +1,21 @@
+# IDEs
+.idea/
+.vscode/
+.env
+
+# Build
+build/
+
+# Python
+__pycache__/
+.venv/
+venv/
+
+# Terraform
+.terraform/
+tf_op.json
+tf.plan
+
+# Unit tests
+coverage.xml
+.coverage

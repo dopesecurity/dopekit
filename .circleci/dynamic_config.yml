@@ -1,0 +1,339 @@
+# yaml-language-server: $schema=https://json.schemastore.org/circleciconfig.json
+
+##### CONFIG #####
+version: 2.1
+
+executors:
+  ci-docker:
+    docker:
+      - image: FIXME!
+        aws_auth:
+          aws_access_key_id: $ECR_AWS_ACCESS_KEY_ID
+          aws_secret_access_key: $ECR_AWS_SECRET_ACCESS_KEY
+    resource_class: small
+
+parameters:
+  rebuild_pipeline_image:
+    type: boolean
+    default: false
+  deploy_service:
+    type: boolean
+    default: false
+
+orbs:
+  aws-ecr: circleci/aws-ecr@7.2.0
+  slack: circleci/slack@4.1
+
+commands:
+  slacksend:
+    steps:
+      - when:
+          condition: << pipeline.git.tag >>
+          steps:
+            - slack/notify:
+                channel: FIXME! (prod-channel)
+                event: fail
+                template: basic_fail_1
+      - when:
+          condition:
+            not: << pipeline.git.tag >>
+          steps:
+            - slack/notify:
+                channel: FIXME! (dev-channel)
+                event: fail
+                template: basic_fail_1
+                branch_pattern: main
+
+###### WORKFLOWS #####
+workflows:
+  build-deploy-main:
+    when:
+      and:
+        - equal: [true, <<pipeline.parameters.deploy_service>>]
+        - equal: [main, << pipeline.git.branch >>]
+        - not: << pipeline.git.tag >>
+    jobs:
+      - run-unit-tests:
+          context:
+            - Slack
+            - AWS
+      - build-packages:
+          context:
+            - Slack
+            - AWS
+      - deploy-stack:
+          name: deploy-<< matrix.stack_region >>
+          stack_name: main
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - AWS
+          requires:
+            - build-packages
+      - component-test:
+          name: test-<< matrix.stack_region >>
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - AWS
+          requires:
+            - deploy-<< matrix.stack_region >>
+            - deploy-us-east-2
+      - publish-github-release:
+          context:
+            - Slack
+          requires:
+            - test-us-east-2
+            - test-ap-southeast-1
+            - test-eu-central-1
+
+  build-deploy-prod:
+    when:
+      and:
+        - equal: [true, <<pipeline.parameters.deploy_service>>]
+        - << pipeline.git.tag >>
+    jobs:
+      - build-packages:
+          filters:
+            tags:
+              only: /PROD_.*/
+          context:
+            - Slack
+            - Production-AWS
+      - deploy-stack:
+          filters:
+            tags:
+              only: /PROD_.*/
+          name: deploy-<< matrix.stack_region >>
+          stack_name: prod
+          aws_env: prod
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - Production-AWS
+          requires:
+            - build-packages
+      - component-test:
+          filters:
+            tags:
+              only: /PROD_.*/
+          name: test-<< matrix.stack_region >>
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - Production-AWS
+          requires:
+            - deploy-<< matrix.stack_region >>
+            - deploy-us-east-2
+
+  build-deploy-pr:
+    when:
+      and:
+        - equal: [true, <<pipeline.parameters.deploy_service>>]
+        - not:
+            equal: [main, << pipeline.git.branch >>]
+        - not: << pipeline.git.tag >>
+    jobs:
+      - run-unit-tests:
+          context:
+            - Slack
+            - AWS
+      - build-packages:
+          context:
+            - Slack
+            - AWS
+      - deploy-stack:
+          name: deploy-<< matrix.stack_region >>
+          stack_name: "pr-${CIRCLE_PULL_REQUEST##*/}"
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - AWS
+          requires:
+            - run-unit-tests
+            - build-packages
+      - component-test:
+          name: test-<< matrix.stack_region >>
+          matrix:
+            parameters:
+              stack_region: ["us-east-2", "eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - AWS
+          requires:
+            - deploy-<< matrix.stack_region >>
+            - deploy-us-east-2
+      - destroy-stack:
+          name: destroy-<< matrix.stack_region >>
+          stack_name: "pr-${CIRCLE_PULL_REQUEST##*/}"
+          matrix:
+            parameters:
+              stack_region: ["eu-central-1", "ap-southeast-1"]
+          context:
+            - Slack
+            - AWS
+          requires:
+            - test-<< matrix.stack_region >>
+      - destroy-stack:
+          name: destroy-us-east-2
+          stack_name: pr-${CIRCLE_PULL_REQUEST##*/}
+          stack_region: us-east-2
+          context:
+            - Slack
+            - AWS
+          requires:
+            - test-us-east-2
+            - test-eu-central-1
+            - test-ap-southeast-1
+
+  rebuild_pipeline_image:
+    when:
+      and:
+        - equal: [true, <<pipeline.parameters.rebuild_pipeline_image>>]
+    jobs:
+      - build-pipeline-image:
+          context:
+            - AWS
+
+###### JOBS #####
+jobs:
+  build-pipeline-image:
+    executor: aws-ecr/default
+    resource_class: medium
+    steps:
+      - checkout
+      - aws-ecr/build-image:
+          account-url: AWS_CIRCLE_ECR_ACCOUNT_URL
+          region: AWS_CIRCLE_ECR_REGION
+          ecr-login: true
+          dockerfile: .circleci/Dockerfile
+          no-output-timeout: 15m
+          repo: FIXME!
+          tag: latest
+      - when:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - aws-ecr/push-image:
+                account-url: AWS_CIRCLE_ECR_ACCOUNT_URL
+                repo: FIXME!
+                tag: latest
+
+  run-unit-tests:
+    executor: ci-docker
+    steps:
+      - checkout
+      - run:
+          name: Run unit tests
+          command: make install unit-tests
+      - slacksend
+
+  build-packages:
+    executor: ci-docker
+    steps:
+      - checkout
+      - run:
+          name: Build packages
+          command: make build
+      - persist_to_workspace:
+          root: ./build
+          paths:
+            - "*.zip"
+      - slacksend
+
+  deploy-stack:
+    executor: ci-docker
+    parameters:
+      stack_name:
+        description: Name of stack to deploy
+        type: string
+      stack_region:
+        description: The AWS region to deploy in
+        type: string
+      aws_env:
+        description: AWS Environment to deploy into
+        default: dev
+        type: string
+    environment:
+      AWS_ENV: << parameters.aws_env >>
+      AWS_REGION: << parameters.stack_region >>
+      DEPLOYER_ID: circleci-${CIRCLE_BUILD_NUM}
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ./build
+      - run:
+          name: Deploy with terraform
+          command: TF_STACK_NAME=<< parameters.stack_name >> make install plan deploy
+      - store_artifacts:
+          path: terraform/tf.plan
+      - store_artifacts:
+          path: terraform/tf_op.json
+      - run:
+          name: Prep tf outputs file
+          command: mv terraform/tf_op.json terraform/<< parameters.stack_region >>_tf_op.json
+      - persist_to_workspace:
+          root: ./terraform
+          paths:
+            - "<< parameters.stack_region >>_tf_op.json"
+      - slacksend
+
+  component-test:
+    executor: ci-docker
+    parameters:
+      stack_region:
+        description: The AWS region to deploy in
+        type: string
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ./terraform
+      - run:
+          name: Prep tf outputs file
+          command: mv terraform/<< parameters.stack_region >>_tf_op.json terraform/tf_op.json
+      - run:
+          name: Run component tests
+          command: make install component-tests
+      - slacksend
+
+  destroy-stack:
+    executor: ci-docker
+    parameters:
+      stack_name:
+        description: Name of stack to destroy
+        type: string
+      stack_region:
+        description: The AWS region to deploy in
+        type: string
+    environment:
+      AWS_REGION: << parameters.stack_region >>
+      DEPLOYER_ID: circleci-${CIRCLE_BUILD_NUM}
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ./build
+      - run:
+          name: Destroy with terraform
+          command: TF_STACK_NAME=<< parameters.stack_name >> make install destroy
+      - slacksend
+
+  publish-github-release:
+    docker:
+      - image: cimg/base:2021.04
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: "Create tag and push"
+          command: GIT_TAG=`cat VERSION` && git tag PROD_${GIT_TAG} && git push origin PROD_${GIT_TAG}
+      - slacksend

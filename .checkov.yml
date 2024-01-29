@@ -1,0 +1,14 @@
+skip-check:
+  - CKV_AWS_115 # Lambda concurrent execution limit ... Overkill
+  - CKV_AWS_116 # Lambda DQL ... Overkill
+  - CKV_AWS_117 # Lambda VPC ... Unneeded
+  - CKV_AWS_158 # Cloudwatch with CMK ... Excessive
+  - CKV_AWS_173 # Lambda Encryption settings for env vars ... Overkill
+  - CKV_AWS_272 # Lambda Code Signing ... We don't use it
+  - CKV_AWS_338 # 1 year log retention ... Excessive
+
+framework: # only scan terraform
+  - terraform
+
+compact: true
+quiet: true
