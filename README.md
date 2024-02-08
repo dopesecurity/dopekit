@@ -1,4 +1,4 @@
-# dopekit
+# dope.kit
 
 This is the template for a new cloud service on AWS. After bootstrapping, you will have a complete production-grade repo for a basic service (hello world lambda).
 
