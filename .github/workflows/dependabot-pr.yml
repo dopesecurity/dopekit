@@ -1,0 +1,13 @@
+name: Dependabot PR
+on:
+  pull_request:
+    types: [opened]
+permissions: {}
+jobs:
+  bump:
+    permissions:
+      contents: write
+    uses: dopesecurity/oh-no-devops/.github/workflows/shared-dependabot-version-bump.yml@main
+    with:
+      version-file: VERSION
+      changelog-file: CHANGELOG.md
