@@ -1,17 +1,21 @@
 version: 2.1
 orbs:
-  path-filtering: circleci/path-filtering@1.0.0
-  continuation: circleci/continuation@1.0.0
+  path-filtering: circleci/path-filtering@2.0.4
+  continuation: circleci/continuation@2.0.1
 
 setup: true
 
-docker:
-  - image: cimg/python:<<parameters.tag>>
+executors:
+  py312:
+    docker:
+      - image: cimg/python:3.12
+    resource_class: small
 
 workflows:
   select-workflow:
     jobs:
       - path-filtering/filter:
+          executor: py312
           filters:
             tags:
               only: /PROD_.*/

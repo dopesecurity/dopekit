@@ -329,7 +329,7 @@ jobs:
 
   publish-github-release:
     docker:
-      - image: cimg/base:2021.04
+      - image: cimg/base:2026.10
     resource_class: small
     steps:
       - checkout
