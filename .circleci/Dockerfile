@@ -1,5 +1,5 @@
 FROM hashicorp/terraform:1.5.7
-FROM python:3.10-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # Install poetry
 RUN pip install poetry==1.6.1

@@ -208,7 +208,9 @@ workflows:
 ###### JOBS #####
 jobs:
   build-pipeline-image:
-    executor: aws-ecr/default
+    executor:
+      name: aws-ecr/default
+      image: ubuntu-2204:2026.10.1
     resource_class: medium
     steps:
       - checkout
@@ -329,7 +331,7 @@ jobs:
 
   publish-github-release:
     docker:
-      - image: cimg/base:2021.04
+      - image: cimg/base:2026.10
     resource_class: small
     steps:
       - checkout
